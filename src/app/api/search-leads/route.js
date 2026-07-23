@@ -83,58 +83,56 @@ async function scrapeWebsite(url) {
         return { emails: [], phones: [], socials: [] };
     }
 }
+const SERPER_RESULTS_COUNT = 50;
+const SCRAPE_LIMIT = 50;
+const PLACES_PAGES = 5; // each page ~20 places, so 2 pages ≈ 40 businesses
+
+async function fetchPlaces(searchQuery, page) {
+    const res = await fetch("https://google.serper.dev/places", {
+        method: "POST",
+        headers: {
+            "X-API-KEY": process.env.SERPER_API_KEY,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ q: searchQuery, page }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.places || [];
+}
 
 export async function POST(request) {
     try {
         const { query, location } = await request.json();
-
         if (!query || !query.trim()) {
             return NextResponse.json({ error: "Search query is required" }, { status: 400 });
         }
 
         const searchQuery = location && location !== "any" ? `${query} in ${location}` : query;
 
-        const serperRes = await fetch("https://google.serper.dev/search", {
-            method: "POST",
-            headers: {
-                "X-API-KEY": process.env.SERPER_API_KEY,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ q: searchQuery, num: 15 }),
-        });
+        // Pull multiple pages of Places results to get closer to 50-60
+        const pagesResults = await Promise.all(
+            Array.from({ length: PLACES_PAGES }, (_, i) => fetchPlaces(searchQuery, i + 1))
+        );
+        const places = pagesResults.flat().filter((p) => p.website); // only ones with a website worth scraping
 
-        if (!serperRes.ok) {
-            return NextResponse.json({ error: "Serper API request failed" }, { status: 502 });
-        }
-
-        const data = await serperRes.json();
-        const organic = (data.organic || [])
-            .filter((r) => {
-                try {
-                    const host = new URL(r.link).hostname.replace("www.", "");
-                    return !SKIP_DOMAINS.some((d) => host.includes(d));
-                } catch {
-                    return false;
-                }
-            })
-            .slice(0, 10); // limit how many sites we scrape per search
-
-        // Scrape all sites in parallel
+        // Scrape each business's own website for emails/socials (phone often already in Places data)
         const scraped = await Promise.all(
-            organic.map(async (result) => {
-                const contactData = await scrapeWebsite(result.link);
+            places.slice(0, SCRAPE_LIMIT).map(async (place) => {
+                const contactData = await scrapeWebsite(place.website);
                 let hostname = "";
                 try {
-                    hostname = new URL(result.link).hostname.replace("www.", "");
+                    hostname = new URL(place.website).hostname.replace("www.", "");
                 } catch { }
 
                 return {
-                    title: result.title || hostname,
-                    website: result.link,
+                    title: place.title || hostname,
+                    website: place.website,
                     hostname,
-                    snippet: result.snippet || "",
+                    address: place.address || "",
+                    rating: place.rating || null,
                     emails: contactData.emails,
-                    phones: contactData.phones,
+                    phones: place.phoneNumber ? [place.phoneNumber, ...contactData.phones] : contactData.phones,
                     socials: contactData.socials,
                 };
             })
