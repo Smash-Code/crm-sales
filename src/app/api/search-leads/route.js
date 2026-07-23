@@ -83,6 +83,8 @@ async function scrapeWebsite(url) {
         return { emails: [], phones: [], socials: [] };
     }
 }
+
+// 
 const SERPER_RESULTS_COUNT = 50;
 const SCRAPE_LIMIT = 50;
 const PLACES_PAGES = 5; // each page ~20 places, so 2 pages ≈ 40 businesses
