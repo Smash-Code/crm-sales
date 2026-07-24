@@ -39,6 +39,43 @@ function extractSocials(html, baseUrl) {
     return Array.from(found, ([platform, url]) => ({ platform, url }));
 }
 
+
+
+async function findBusinessContact(place) {
+    const query = `"${place.title}" "${place.address}" phone`;
+
+    const res = await fetch(
+        "https://google.serper.dev/search",
+        {
+            method: "POST",
+            headers: {
+                "X-API-KEY": process.env.SERPER_API_KEY,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                q: query,
+                num: 10,
+            }),
+        }
+    );
+
+    if (!res.ok) {
+        return {
+            phones: [],
+            emails: [],
+        };
+    }
+
+    const data = await res.json();
+
+    const text = JSON.stringify(data);
+
+    return {
+        phones: extractPhones(text),
+        emails: extractEmails(text),
+    };
+}
+
 function extractEmails(html) {
     const fromMailto = [...html.matchAll(MAILTO_REGEX)].map((m) => m[1]);
     const fromText = html.match(EMAIL_REGEX) || [];
@@ -152,26 +189,56 @@ export async function POST(request) {
         // ---------------------------------------------------
         // 1. Process businesses WITHOUT websites first
         // ---------------------------------------------------
+        const noWebsiteLeads = await Promise.all(
+            placesWithoutWebsite.map(async (place) => {
 
-        const noWebsiteLeads = placesWithoutWebsite.map((place) => ({
-            title: place.title || "",
-            website: null,
-            hostname: "",
-            address: place.address || "",
-            rating: place.rating || null,
+                const contactData =
+                    await findBusinessContact(place);
 
-            // Google Places phone number
-            phones: place.phoneNumber
-                ? [place.phoneNumber]
-                : [],
+                return {
+                    title: place.title || "",
+                    website: null,
+                    hostname: "",
 
-            emails: [],
-            socials: [],
+                    address: place.address || "",
+                    rating: place.rating || null,
 
-            // Useful for frontend filtering/sorting
-            hasWebsite: false,
-            priority: "high",
-        }));
+                    phones: [
+                        ...new Set(contactData.phones),
+                    ],
+
+                    emails: [
+                        ...new Set(contactData.emails),
+                    ],
+
+                    socials: [],
+
+                    hasWebsite: false,
+                    priority: "high",
+                };
+            })
+        );
+        // console.log("PLACE RESULT:", placesWithoutWebsite);
+        // const noWebsiteLeads = placesWithoutWebsite.map((place) => (
+        //     {
+        //         title: place.title || "",
+        //         website: null,
+        //         hostname: "",
+        //         address: place.address || "",
+        //         rating: place.rating || null,
+
+        //         // Google Places phone number
+        //         phones: place.phoneNumber
+        //             ? [place.phoneNumber]
+        //             : [],
+
+        //         emails: [],
+        //         socials: [],
+
+        //         // Useful for frontend filtering/sorting
+        //         hasWebsite: false,
+        //         priority: "high",
+        //     }));
 
         // ---------------------------------------------------
         // 2. Scrape businesses WITH websites
