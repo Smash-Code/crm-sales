@@ -106,43 +106,186 @@ async function fetchPlaces(searchQuery, page) {
 export async function POST(request) {
     try {
         const { query, location } = await request.json();
+
         if (!query || !query.trim()) {
-            return NextResponse.json({ error: "Search query is required" }, { status: 400 });
+            return NextResponse.json(
+                { error: "Search query is required" },
+                { status: 400 }
+            );
         }
 
-        const searchQuery = location && location !== "any" ? `${query} in ${location}` : query;
+        const searchQuery =
+            location && location !== "any"
+                ? `${query} in ${location}`
+                : query;
 
-        // Pull multiple pages of Places results to get closer to 50-60
+        // Fetch multiple pages of Google Places results
         const pagesResults = await Promise.all(
-            Array.from({ length: PLACES_PAGES }, (_, i) => fetchPlaces(searchQuery, i + 1))
-        );
-        const places = pagesResults.flat().filter((p) => p.website); // only ones with a website worth scraping
-
-        // Scrape each business's own website for emails/socials (phone often already in Places data)
-        const scraped = await Promise.all(
-            places.slice(0, SCRAPE_LIMIT).map(async (place) => {
-                const contactData = await scrapeWebsite(place.website);
-                let hostname = "";
-                try {
-                    hostname = new URL(place.website).hostname.replace("www.", "");
-                } catch { }
-
-                return {
-                    title: place.title || hostname,
-                    website: place.website,
-                    hostname,
-                    address: place.address || "",
-                    rating: place.rating || null,
-                    emails: contactData.emails,
-                    phones: place.phoneNumber ? [place.phoneNumber, ...contactData.phones] : contactData.phones,
-                    socials: contactData.socials,
-                };
-            })
+            Array.from(
+                { length: PLACES_PAGES },
+                (_, i) => fetchPlaces(searchQuery, i + 1)
+            )
         );
 
-        return NextResponse.json({ leads: scraped, query: searchQuery });
+        // Get all places
+        const places = pagesResults.flat();
+
+        // Remove duplicate businesses
+        const uniquePlaces = Array.from(
+            new Map(
+                places.map((place) => [
+                    `${place.title}-${place.address}`,
+                    place,
+                ])
+            ).values()
+        );
+
+        // Separate businesses with and without websites
+        const placesWithoutWebsite = uniquePlaces.filter(
+            (place) => !place.website
+        );
+
+        const placesWithWebsite = uniquePlaces.filter(
+            (place) => place.website
+        );
+
+        // ---------------------------------------------------
+        // 1. Process businesses WITHOUT websites first
+        // ---------------------------------------------------
+
+        const noWebsiteLeads = placesWithoutWebsite.map((place) => ({
+            title: place.title || "",
+            website: null,
+            hostname: "",
+            address: place.address || "",
+            rating: place.rating || null,
+
+            // Google Places phone number
+            phones: place.phoneNumber
+                ? [place.phoneNumber]
+                : [],
+
+            emails: [],
+            socials: [],
+
+            // Useful for frontend filtering/sorting
+            hasWebsite: false,
+            priority: "high",
+        }));
+
+        // ---------------------------------------------------
+        // 2. Scrape businesses WITH websites
+        // ---------------------------------------------------
+
+        const websiteLeads = await Promise.all(
+            placesWithWebsite
+                .slice(0, SCRAPE_LIMIT)
+                .map(async (place) => {
+                    const contactData = await scrapeWebsite(place.website);
+
+                    let hostname = "";
+
+                    try {
+                        hostname = new URL(place.website)
+                            .hostname
+                            .replace("www.", "");
+                    } catch { }
+
+                    return {
+                        title: place.title || hostname,
+                        website: place.website,
+                        hostname,
+
+                        address: place.address || "",
+                        rating: place.rating || null,
+
+                        emails: contactData.emails,
+
+                        phones: place.phoneNumber
+                            ? [
+                                place.phoneNumber,
+                                ...contactData.phones,
+                            ]
+                            : contactData.phones,
+
+                        socials: contactData.socials,
+
+                        hasWebsite: true,
+                        priority: "normal",
+                    };
+                })
+        );
+
+        // ---------------------------------------------------
+        // 3. Put businesses WITHOUT websites first
+        // ---------------------------------------------------
+
+        const leads = [
+            ...noWebsiteLeads,
+            ...websiteLeads,
+        ];
+
+        return NextResponse.json({
+            leads,
+            query: searchQuery,
+
+            // Optional statistics for your frontend
+            stats: {
+                total: leads.length,
+                withoutWebsite: noWebsiteLeads.length,
+                withWebsite: websiteLeads.length,
+            },
+        });
+
     } catch (err) {
         console.error("search-leads error:", err);
-        return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+
+        return NextResponse.json(
+            { error: "Something went wrong" },
+            { status: 500 }
+        );
     }
 }
+// export async function POST(request) {
+//     try {
+//         const { query, location } = await request.json();
+//         if (!query || !query.trim()) {
+//             return NextResponse.json({ error: "Search query is required" }, { status: 400 });
+//         }
+
+//         const searchQuery = location && location !== "any" ? `${query} in ${location}` : query;
+
+//         // Pull multiple pages of Places results to get closer to 50-60
+//         const pagesResults = await Promise.all(
+//             Array.from({ length: PLACES_PAGES }, (_, i) => fetchPlaces(searchQuery, i + 1))
+//         );
+//         const places = pagesResults.flat().filter((p) => p.website); // only ones with a website worth scraping
+
+//         // Scrape each business's own website for emails/socials (phone often already in Places data)
+//         const scraped = await Promise.all(
+//             places.slice(0, SCRAPE_LIMIT).map(async (place) => {
+//                 const contactData = await scrapeWebsite(place.website);
+//                 let hostname = "";
+//                 try {
+//                     hostname = new URL(place.website).hostname.replace("www.", "");
+//                 } catch { }
+
+//                 return {
+//                     title: place.title || hostname,
+//                     website: place.website,
+//                     hostname,
+//                     address: place.address || "",
+//                     rating: place.rating || null,
+//                     emails: contactData.emails,
+//                     phones: place.phoneNumber ? [place.phoneNumber, ...contactData.phones] : contactData.phones,
+//                     socials: contactData.socials,
+//                 };
+//             })
+//         );
+
+//         return NextResponse.json({ leads: scraped, query: searchQuery });
+//     } catch (err) {
+//         console.error("search-leads error:", err);
+//         return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+//     }
+// }
