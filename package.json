@@ -11,6 +11,7 @@
     "firebase": "^12.16.0",
     "next": "16.2.10",
     "react": "19.2.4",
+    "react-country-state-city": "^1.1.13",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
