@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "firebase": "^12.16.0",
+    "libphonenumber-js": "^1.13.9",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-country-state-city": "^1.1.13",
