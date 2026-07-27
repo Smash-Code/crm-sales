@@ -8,7 +8,7 @@ import "react-country-state-city/dist/react-country-state-city.css";
 
 export default function LeadsPage() {
     const [query, setQuery] = useState("");
-    const [location, setLocation] = useState(""); 
+    const [location, setLocation] = useState("");
     const [loading, setLoading] = useState(false);
     const [leads, setLeads] = useState([]);
     const [error, setError] = useState("");
@@ -33,7 +33,7 @@ export default function LeadsPage() {
     const handleCountryChange = (e) => {
         const countryId = Number(e.target.value);
         const country = countriesList.find((c) => c.id === countryId);
-        
+
         setSelectedCountry(country || null);
         setSelectedState(null);
         setStatesList([]);
@@ -49,7 +49,7 @@ export default function LeadsPage() {
     const handleStateChange = (e) => {
         const stateId = Number(e.target.value);
         const state = statesList.find((s) => s.id === stateId);
-        
+
         setSelectedState(state || null);
         setCitiesList([]);
         setLocation(state ? `${state.name}, ${selectedCountry?.name}` : selectedCountry?.name || "");
@@ -78,6 +78,7 @@ export default function LeadsPage() {
         setError("");
         setLoading(true);
         setLeads([]);
+        setSavedLinks(new Set());
 
         try {
             const res = await fetch("/api/search-leads", {
@@ -90,6 +91,7 @@ export default function LeadsPage() {
             if (!res.ok) {
                 setError(data.error || "Search failed. Try again.");
             } else {
+                console.log(data.leads)
                 setLeads(data.leads);
                 if (data.leads.length === 0) {
                     setError("No results found for that search.");
@@ -103,12 +105,14 @@ export default function LeadsPage() {
     }
 
     async function saveLead(lead) {
-        setSavingLink(lead.website);
+        setSavingLink(lead.id);
         try {
             await addDoc(collection(db, "leads"), {
                 title: lead.title,
                 website: lead.website,
                 hostname: lead.hostname,
+                address: lead.address,
+                mapLink: lead.mapLink,
                 emails: lead.emails,
                 phones: lead.phones,
                 socials: lead.socials,
@@ -116,7 +120,7 @@ export default function LeadsPage() {
                 location: location.trim() || "any",
                 createdAt: serverTimestamp(),
             });
-            setSavedLinks((prev) => new Set(prev).add(lead.website));
+            setSavedLinks((prev) => new Set(prev).add(lead.id));
             showToast("Lead saved to Firebase.");
         } catch (err) {
             console.error(err);
@@ -127,7 +131,7 @@ export default function LeadsPage() {
     }
 
     async function saveAll() {
-        const unsaved = leads.filter((l) => !savedLinks.has(l.website));
+        const unsaved = leads.filter((l) => !savedLinks.has(l.id));
         for (const lead of unsaved) {
             await saveLead(lead);
         }
@@ -256,6 +260,7 @@ export default function LeadsPage() {
                                 <thead>
                                     <tr className="bg-slate-900 text-slate-400 text-xs uppercase tracking-wide">
                                         <th className="text-left px-4 py-3 font-medium">Business</th>
+                                        <th className="text-left px-4 py-3 font-medium">Location</th>
                                         <th className="text-left px-4 py-3 font-medium">Emails</th>
                                         <th className="text-left px-4 py-3 font-medium">Phones</th>
                                         <th className="text-left px-4 py-3 font-medium">Social</th>
@@ -264,19 +269,39 @@ export default function LeadsPage() {
                                 <tbody>
                                     {leads.map((lead) => (
                                         <tr
-                                            key={lead.website}
+                                            key={lead.id}
                                             className="border-t border-slate-800 hover:bg-slate-900/50 transition"
                                         >
                                             <td className="px-4 py-3 align-top max-w-[220px]">
                                                 <p className="font-medium text-white truncate">{lead.title}</p>
-                                                <a
-                                                    href={lead.website}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="text-xs text-emerald-400 hover:underline truncate block"
-                                                >
-                                                    {lead.hostname}
-                                                </a>
+                                                {lead.website && (
+                                                    <a
+                                                        href={lead.website}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="text-xs text-emerald-400 hover:underline truncate block"
+                                                    >
+                                                        {lead.hostname}
+                                                    </a>
+                                                )}
+                                            </td>
+
+                                            <td className="px-4 py-3 align-top max-w-[200px]">
+                                                {lead.address && (
+                                                    <p className="text-slate-400 text-xs truncate">{lead.address}</p>
+                                                )}
+                                                {lead.mapLink ? (
+                                                    <a
+                                                        href={lead.mapLink}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="text-xs text-sky-400 hover:underline"
+                                                    >
+                                                        View on map
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-slate-600 text-xs">—</span>
+                                                )}
                                             </td>
 
                                             <td className="px-4 py-3 align-top">

@@ -370,9 +370,6 @@
 
 
 
-
-
-
 import { NextResponse } from "next/server";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 
@@ -620,6 +617,39 @@ function detectCountryFromText(text) {
 const detectCountryFromAddress = detectCountryFromText;
 
 // ---------------------------------------------------------------
+// Google Maps link builder
+// ---------------------------------------------------------------
+
+/**
+ * Builds the best available Google Maps link for a Serper Places result,
+ * in order of precision:
+ * 1. cid (Google's unique place identifier) -> opens the exact business
+ *    listing on Maps, same as clicking it in normal Google search results.
+ * 2. latitude/longitude -> drops a pin at the exact coordinates.
+ * 3. address text -> falls back to a Maps text search, still points to
+ *    the right general spot even without exact coordinates.
+ * Returns null only if none of the above are available.
+ */
+function buildMapLink(place) {
+    if (place.cid) {
+        return `https://www.google.com/maps?cid=${place.cid}`;
+    }
+
+    if (place.latitude != null && place.longitude != null) {
+        return `https://www.google.com/maps?q=${place.latitude},${place.longitude}`;
+    }
+
+    if (place.address) {
+        const query = place.title
+            ? `${place.title}, ${place.address}`
+            : place.address;
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    }
+
+    return null;
+}
+
+// ---------------------------------------------------------------
 // Phone number normalization
 // ---------------------------------------------------------------
 
@@ -843,7 +873,7 @@ export async function POST(request) {
         // 1. Process businesses WITHOUT websites first
         // ---------------------------------------------------
         const noWebsiteLeads = await Promise.all(
-            placesWithoutWebsite.map(async (place) => {
+            placesWithoutWebsite.map(async (place, i) => {
 
                 // Use the country embedded in this specific place's address
                 // (e.g. "...Faisalabad, Punjab, Pakistan" -> PK) so a US
@@ -860,12 +890,14 @@ export async function POST(request) {
                     : [];
 
                 return {
+                    id: `no-website-${i}-${place.title || ""}`,
                     title: place.title || "",
                     website: null,
                     hostname: "",
 
                     address: place.address || "",
                     rating: place.rating || null,
+                    mapLink: buildMapLink(place),
 
                     phones: [
                         ...new Set([...placesPhone, ...contactData.phones]),
@@ -890,7 +922,7 @@ export async function POST(request) {
         const websiteLeads = await Promise.all(
             placesWithWebsite
                 .slice(0, SCRAPE_LIMIT)
-                .map(async (place) => {
+                .map(async (place, i) => {
                     const placeCountry = detectCountryFromAddress(place.address) || defaultCountry;
 
                     const contactData = await scrapeWebsite(place.website, placeCountry);
@@ -908,12 +940,14 @@ export async function POST(request) {
                         : [];
 
                     return {
+                        id: `website-${i}-${hostname || place.title || ""}`,
                         title: place.title || hostname,
                         website: place.website,
                         hostname,
 
                         address: place.address || "",
                         rating: place.rating || null,
+                        mapLink: buildMapLink(place),
 
                         emails: contactData.emails,
 
