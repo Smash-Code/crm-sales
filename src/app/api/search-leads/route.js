@@ -876,8 +876,8 @@ async function scrapeWebsite(url, defaultCountry) {
 // ---------------------------------------------------------------
 
 const SCRAPE_LIMIT = 50;
-const PAGE_SIZE = 20; // Places API (New) max per page
-const MAX_PAGES = 3; // Text Search (New) returns a max of 60 results across all pages total
+const PAGE_SIZE = 130; // Places API (New) max per page
+const MAX_PAGES = 8; // Text Search (New) returns a max of 60 results across all pages total
 
 const PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 
