@@ -624,6 +624,7 @@
 //     }
 // }
 
+
 import { NextResponse } from "next/server";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 
@@ -876,8 +877,8 @@ async function scrapeWebsite(url, defaultCountry) {
 // ---------------------------------------------------------------
 
 const SCRAPE_LIMIT = 50;
-const PAGE_SIZE = 130; // Places API (New) max per page
-const MAX_PAGES = 8; // Text Search (New) returns a max of 60 results across all pages total
+const PAGE_SIZE = 20; // Places API (New) max per page
+const MAX_PAGES = 3; // Text Search (New) returns a max of 60 results across all pages total
 
 const PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 
@@ -1005,7 +1006,7 @@ export async function POST(request) {
                 rating: place.rating ?? null,
                 mapLink: buildMapLink(place),
 
-                phones: placePhone ? formatPhoneList([placePhone], placeCountry) : [],
+                phones: placePhone ? formatPhoneList([placePhone], placeCountry).slice(0, 3) : [],
                 emails: [],
                 socials: [],
 
@@ -1043,7 +1044,7 @@ export async function POST(request) {
                     mapLink: buildMapLink(place),
 
                     emails: contactData.emails,
-                    phones: [...new Set([...placesPhoneFormatted, ...contactData.phones])],
+                    phones: [...new Set([...placesPhoneFormatted, ...contactData.phones])].slice(0, 3),
                     socials: contactData.socials,
 
                     hasWebsite: true,
